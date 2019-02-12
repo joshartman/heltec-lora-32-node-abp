@@ -58,7 +58,7 @@ void os_getArtEui(u1_t *buf) {}
 void os_getDevEui(u1_t *buf) {}
 void os_getDevKey(u1_t *buf) {}
 
-#define ONE_WIRE_BUS  13        // GPIO 13
+#define ONE_WIRE_BUS 13 // GPIO 13
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
@@ -71,14 +71,14 @@ static osjob_t sendjob;
 // cycle limitations).
 const unsigned TX_INTERVAL = 60 * 5;
 
-#define SPI_LORA_CLK     5
-#define SPI_LORA_MISO   19
-#define SPI_LORA_MOSI   27
-#define LORA_RST        14
-#define LORA_CS         18
-#define LORA_DIO_0      26
-#define LORA_DIO_1      34
-#define LORA_DIO_2      35
+#define SPI_LORA_CLK 5
+#define SPI_LORA_MISO 19
+#define SPI_LORA_MOSI 27
+#define LORA_RST 14
+#define LORA_CS 18
+#define LORA_DIO_0 26
+#define LORA_DIO_1 34
+#define LORA_DIO_2 35
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
@@ -88,22 +88,25 @@ const lmic_pinmap lmic_pins = {
     .dio = {LORA_DIO_0, LORA_DIO_1, LORA_DIO_2},
 };
 
-int encodeTemp() {
+int encodeTemp()
+{
     sensors.requestTemperatures();
     float tempC = sensors.getTempC(tempSensor);
 
     char buf[8];
-    sprintf(buf,"%0.2f",tempC);
-    u8x8.drawString(0,0,buf);
-    Serial.printf("Temp: %0.2f\n",tempC);
+    sprintf(buf, "%0.2f", tempC);
+    u8x8.drawString(0, 0, buf);
+    Serial.printf("Temp: %0.2f\n", tempC);
 
-    s2_t itemp = (s2_t) (tempC * 100);
-    if (itemp < 0) {
+    s2_t itemp = (s2_t)(tempC * 100);
+    if (itemp < 0)
+    {
         itemp *= -1;
         itemp |= 0x8000;
     }
     int len = sizeof(itemp);
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < len; i++)
+    {
         mydata[i] = itemp & 0xff;
         itemp = itemp >> 8;
     }
@@ -125,6 +128,7 @@ void do_send(osjob_t *j)
         // Prepare upstream data transmission at the next possible time.
         LMIC_setTxData2(1, mydata, len, 0);
         Serial.println(F("Packet queued"));
+        digitalWrite(LED_BUILTIN, HIGH);
     }
     // Next TX is scheduled after TX_COMPLETE event.
 }
@@ -163,6 +167,7 @@ void onEvent(ev_t ev)
         Serial.println(F("EV_REJOIN_FAILED"));
         break;
     case EV_TXCOMPLETE:
+        digitalWrite(LED_BUILTIN, LOW);
         Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
         if (LMIC.txrxFlags & TXRX_ACK)
             Serial.println(F("Received ack"));
@@ -206,17 +211,19 @@ void setup()
     u8x8.setFont(u8x8_font_courB18_2x3_n);
 
     sensors.begin();
-    sensors.getAddress(tempSensor,0);
-    sensors.setResolution(tempSensor, 10);   // 0.25 degrees increments
+    sensors.getAddress(tempSensor, 0);
+    sensors.setResolution(tempSensor, 10); // 0.25 degrees increments
 
-#ifdef VCC_ENABLE
-    // For Pinoccio Scout boards
-    pinMode(VCC_ENABLE, OUTPUT);
-    digitalWrite(VCC_ENABLE, HIGH);
-    delay(1000);
-#endif
+    pinMode(LED_BUILTIN, OUTPUT);
+    for (int i = 0; i < 10; i++)
+    {
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(50);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(50);
+    }
 
-    SPI.begin(LORA_SCK,LORA_MISO,LORA_MOSI);
+    SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI);
 
     // LMIC init
     os_init();
