@@ -7,26 +7,6 @@
  * including, but not limited to, copying, modification and redistribution.
  * NO WARRANTY OF ANY KIND IS PROVIDED.
  *
- * This example sends a valid LoRaWAN packet with payload "Hello,
- * world!", using frequency and encryption settings matching those of
- * the The Things Network.
- *
- * This uses ABP (Activation-by-personalisation), where a DevAddr and
- * Session keys are preconfigured (unlike OTAA, where a DevEUI and
- * application key is configured, while the DevAddr and session keys are
- * assigned/generated in the over-the-air-activation procedure).
- *
- * Note: LoRaWAN per sub-band duty-cycle limitation is enforced (1% in
- * g1, 0.1% in g2), but not the TTN fair usage policy (which is probably
- * violated by this sketch when left running for longer)!
- *
- * To use this sketch, first register your application and device with
- * the things network, to set or generate a DevAddr, NwkSKey and
- * AppSKey. Each device should have their own unique values for these
- * fields.
- *
- * Do not forget to define the radio type correctly in config.h.
- *
  *******************************************************************************/
 
 #include <Arduino.h>
@@ -63,9 +43,15 @@ void os_getDevKey(u1_t *buf) {}
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 DeviceAddress tempSensor;
+static float tempC;
 
 static uint8_t mydata[16];
+
 static osjob_t sendjob;
+static osjob_t triggerjob;
+static osjob_t readjob;
+
+void do_temp_read(osjob_t *j);
 
 // Schedule TX every this many seconds (might become longer due to duty
 // cycle limitations).
@@ -88,15 +74,28 @@ const lmic_pinmap lmic_pins = {
     .dio = {LORA_DIO_0, LORA_DIO_1, LORA_DIO_2},
 };
 
-int encodeTemp()
+void triggerReadTemp()
 {
     sensors.requestTemperatures();
-    float tempC = sensors.getTempC(tempSensor);
+    Serial.println(F("Trigger Temps"));
+}
+
+void readTemps()
+{
+    tempC = sensors.getTempC(tempSensor);
+    Serial.printf("Read Temps = %0.2f\n", tempC);
 
     char buf[8];
-    sprintf(buf, "%0.2f", tempC);
+    sprintf(buf, "=%0.2f", tempC);
     u8x8.drawString(0, 0, buf);
-    Serial.printf("Temp: %0.2f\n", tempC);
+}
+
+int encodeTemp(float tempC)
+{
+    char buf[8];
+    sprintf(buf, ">%0.2f", tempC);
+    u8x8.drawString(0, 3, buf);
+    Serial.printf("Send Temp: %0.2f\n", tempC);
 
     s2_t itemp = (s2_t)(tempC * 100);
     if (itemp < 0)
@@ -114,9 +113,24 @@ int encodeTemp()
     return len;
 }
 
+void do_temp_trigger(osjob_t *j)
+{
+    triggerReadTemp();
+
+    // Scehdule the actual read in 2 seconds
+    os_setTimedCallback(&readjob, os_getTime() + sec2osticks(2), do_temp_read);
+}
+
+void do_temp_read(osjob_t *j)
+{
+    readTemps();
+
+    os_setTimedCallback(&triggerjob, os_getTime() + sec2osticks(28), do_temp_trigger);
+}
+
 void do_send(osjob_t *j)
 {
-    int len = encodeTemp();
+    int len = encodeTemp(tempC);
 
     // Check if there is not a current TX/RX job running
     if (LMIC.opmode & OP_TXRXPEND)
@@ -205,14 +219,17 @@ void onEvent(ev_t ev)
 void setup()
 {
     Serial.begin(115200);
-    Serial.println(F("Node v0.1"));
+    Serial.println(F("Node v0.2"));
 
     u8x8.begin();
-    u8x8.setFont(u8x8_font_courB18_2x3_n);
+    u8x8.setFont(u8x8_font_courB18_2x3_r);
 
     sensors.begin();
     sensors.getAddress(tempSensor, 0);
     sensors.setResolution(tempSensor, 10); // 0.25 degrees increments
+
+    // Trigger the initial temperature reading
+    triggerReadTemp();
 
     pinMode(LED_BUILTIN, OUTPUT);
     for (int i = 0; i < 10; i++)
@@ -222,6 +239,9 @@ void setup()
         digitalWrite(LED_BUILTIN, LOW);
         delay(50);
     }
+
+    // Read at least one reading into the registers and the global variable
+    readTemps();
 
     SPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI);
 
@@ -294,7 +314,8 @@ void setup()
     // Let LMIC compensate for +/- 1% clock error
     // LMIC_setClockError(MAX_CLOCK_ERROR * 1 / 100);
 
-    // Start job
+    // Start jobs
+    do_temp_read(&readjob);
     do_send(&sendjob);
 }
 
