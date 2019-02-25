@@ -8,3 +8,5 @@ Implemented the following:
 * OneWire to read a Dallas DS18B20 on a 1-wire bus on GPIO13
 
 The example was coded in PlatformIO (Visual Studio Code)
+
+The program makes use of the LMIC scheduling functions to read the DS18B20 every 30 seconds. The radio code will transmit the last read value every 5 minutes. This makes the 1-wire reading separate from the radio transmission code.
